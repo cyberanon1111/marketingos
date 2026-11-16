@@ -1,0 +1,18 @@
+export const NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
+  { href: '/projects', label: 'Projects', icon: '📁' },
+  { href: '/tasks', label: 'Tasks', icon: '✅' },
+  { href: '/content-calendar', label: 'Content Calendar', icon: '📅' },
+  { href: '/campaigns', label: 'Campaigns', icon: '📣' },
+  { href: '/newsletter', label: 'Newsletter', icon: '📰' },
+  { href: '/seo', label: 'SEO', icon: '✍️' },
+  { href: '/linkedin', label: 'LinkedIn', icon: '💼' },
+  { href: '/email-marketing', label: 'Email Marketing', icon: '📧' },
+  { href: '/website', label: 'Website', icon: '🌐' },
+  { href: '/asset-library', label: 'Asset Library', icon: '📂' },
+  { href: '/sop-library', label: 'SOP Library', icon: '📖' },
+  { href: '/analytics', label: 'Analytics', icon: '📈' },
+  { href: '/team', label: 'Team', icon: '👥' },
+  { href: '/ceo-dashboard', label: 'CEO Dashboard', icon: '📊' },
+  { href: '/settings', label: 'Settings', icon: '⚙️' },
+] as const;

@@ -1,0 +1,305 @@
+// MarketingOS — Phase 1 schema
+// See workflows/ (future) for module-specific SOPs; this is the core-loop data model.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Auth (NextAuth Prisma adapter) ───────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ── Core ──────────────────────────────────────────────────────────
+
+enum Role {
+  MANAGER
+  MEMBER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(MEMBER)
+  createdAt     DateTime  @default(now())
+
+  accounts Account[]
+  sessions Session[]
+
+  ownedProjects      Project[]      @relation("ProjectOwner")
+  ownedTasks         Task[]         @relation("TaskOwner")
+  reviewingTasks     Task[]         @relation("TaskReviewer")
+  ownedCampaigns     Campaign[]     @relation("CampaignOwner")
+  deliverables       Deliverable[]  @relation("DeliverableSubmitter")
+  reviewActions      ReviewAction[] @relation("ReviewActor")
+  comments           Comment[]      @relation("CommentAuthor")
+  notifications      Notification[]
+  activityLogEntries ActivityLog[]  @relation("ActivityActor")
+
+  @@index([email])
+}
+
+enum ProjectStage {
+  PLANNING
+  EXECUTION
+  INTERNAL_REVIEW
+  CEO_REVIEW
+  APPROVED
+  COMPLETED
+  PAUSED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Project {
+  id             String       @id @default(cuid())
+  name           String
+  description    String?      @db.Text
+  businessGoal   String?      @db.Text
+  campaignType   String?
+  priority       Priority     @default(MEDIUM)
+  ownerId        String
+  owner          User         @relation("ProjectOwner", fields: [ownerId], references: [id])
+  startDate      DateTime?
+  deadline       DateTime?
+  stage          ProjectStage @default(PLANNING)
+  archived       Boolean      @default(false)
+  campaignId     String?
+  campaign       Campaign?    @relation(fields: [campaignId], references: [id])
+  notes          String?      @db.Text
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  tasks Task[]
+
+  @@index([ownerId])
+  @@index([stage])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  READY_FOR_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+}
+
+model Task {
+  id                  String     @id @default(cuid())
+  title               String
+  description         String?    @db.Text
+  projectId           String
+  project             Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  campaignId          String?
+  campaign            Campaign?  @relation(fields: [campaignId], references: [id])
+  ownerId             String
+  owner               User       @relation("TaskOwner", fields: [ownerId], references: [id])
+  reviewerId          String
+  reviewer            User       @relation("TaskReviewer", fields: [reviewerId], references: [id])
+  priority            Priority   @default(MEDIUM)
+  status              TaskStatus @default(TODO)
+  estimatedHours      Float?
+  actualHours         Float?
+  startDate           DateTime?
+  dueDate             DateTime?
+  acceptanceCriteria  String?    @db.Text
+  definitionOfDone    String?    @db.Text
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  dependsOn    TaskDependency[] @relation("DependentTask")
+  dependedOnBy TaskDependency[] @relation("DependsOnTask")
+
+  deliverables  Deliverable[]
+  reviewActions ReviewAction[]
+  comments      Comment[]
+
+  @@index([projectId])
+  @@index([ownerId])
+  @@index([reviewerId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model TaskDependency {
+  id            String @id @default(cuid())
+  taskId        String
+  task          Task   @relation("DependentTask", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnId   String
+  dependsOn     Task   @relation("DependsOnTask", fields: [dependsOnId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnId])
+}
+
+enum DeliverableType {
+  GOOGLE_DOC
+  GOOGLE_SHEET
+  CANVA
+  FIGMA
+  PDF
+  LINK
+  LINKEDIN_POST
+  MAILCHIMP_CAMPAIGN
+  FILE
+}
+
+model Deliverable {
+  id            String          @id @default(cuid())
+  taskId        String
+  task          Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  type          DeliverableType
+  url           String
+  version       Int             @default(1)
+  submittedById String
+  submittedBy   User            @relation("DeliverableSubmitter", fields: [submittedById], references: [id])
+  submittedAt   DateTime        @default(now())
+
+  @@index([taskId])
+}
+
+enum ReviewActionType {
+  APPROVE
+  REJECT
+  REQUEST_CHANGES
+}
+
+model ReviewAction {
+  id         String           @id @default(cuid())
+  taskId     String
+  task       Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  reviewerId String
+  reviewer   User             @relation("ReviewActor", fields: [reviewerId], references: [id])
+  action     ReviewActionType
+  comment    String?          @db.Text
+  createdAt  DateTime         @default(now())
+
+  @@index([taskId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("CommentAuthor", fields: [authorId], references: [id])
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+enum CampaignStatus {
+  PLANNING
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+model Campaign {
+  id             String         @id @default(cuid())
+  name           String
+  objective      String?        @db.Text
+  businessGoal   String?        @db.Text
+  targetAudience String?
+  channels       String[]
+  ownerId        String
+  owner          User           @relation("CampaignOwner", fields: [ownerId], references: [id])
+  budget         Float?
+  launchDate     DateTime?
+  status         CampaignStatus @default(PLANNING)
+  successMetrics String?        @db.Text
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  projects Project[]
+  tasks    Task[]
+
+  @@index([status])
+  @@index([launchDate])
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  REVIEW_REQUESTED
+  REVIEW_APPROVED
+  REVIEW_REJECTED
+  CHANGES_REQUESTED
+  COMMENT_ADDED
+  DEADLINE_TOMORROW
+  TASK_OVERDUE
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  message   String
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  actorId    String
+  actor      User     @relation("ActivityActor", fields: [actorId], references: [id])
+  action     String
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
